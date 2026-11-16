@@ -52,32 +52,37 @@ def main():
         sys.exit("Не нашёл таких округов/сторон. Смотрите список в --help.")
     names = {o.short for o in okrugs}
 
+    use_sheet = not a.no_sheet and bool(cfg.get("webapp_url"))
+    gid = a.gid or (cfg.get("tabs") or {}).get(query.lower())
+    sheet_name = a.sheet or (None if gid else query[:1].upper() + query[1:])
+
+    def flush():
+        """Досылает в таблицу всё, что ещё не отправлено."""
+        if not use_sheet:
+            return
+        todo = db.unsent(con, query)
+        if not todo:
+            return
+        try:
+            ids = sheets.send(cfg, todo, sheet_name=sheet_name, gid=gid)
+            db.mark_sent(con, query, ids)
+        except Exception as e:  # сеть/Google — не останавливаем сбор, дошлём позже
+            print(f"  не удалось отправить в таблицу ({e}), дошлю позже")
+
     if not a.only_send:
-        collect(con, query, okrugs, names, a.max_cells)
+        collect(con, query, okrugs, names, a.max_cells, flush)
 
     rows = db.all_rows(con, query)
     path = sheets.write_csv(query, rows)
     with_phone = sum(1 for r in rows if r[3])
     print(f"\nВсего по запросу «{query}»: {len(rows)} организаций, с телефоном: {with_phone}")
     print(f"CSV: {path}")
-
-    if a.no_sheet:
-        return
-    if not cfg.get("webapp_url"):
+    if not a.no_sheet and not cfg.get("webapp_url"):
         print("Google Таблица не настроена (config.json) — данные пока только в CSV. См. README.")
-        return
-    gid = a.gid or (cfg.get("tabs") or {}).get(query.lower())
-    sheet_name = a.sheet or (None if gid else query[:1].upper() + query[1:])
-    todo = db.unsent(con, query)
-    if not todo:
-        print("В таблицу отправлять нечего — всё уже там.")
-        return
-    ids = sheets.send(cfg, todo, sheet_name=sheet_name, gid=gid)
-    db.mark_sent(con, query, ids)
-    print(f"Отправлено в Google Таблицу: {len(ids)}")
+    flush()
 
 
-def collect(con, query, okrugs, names, max_cells):
+def collect(con, query, okrugs, names, max_cells, flush=lambda: None):
     cells = deque(geo.grid(okrugs, START_ZOOM))
     print(f"Запрос «{query}», округа: {', '.join(sorted(names))}. Квадратов для начала: {len(cells)}")
     br = Browser()
@@ -113,6 +118,8 @@ def collect(con, query, okrugs, names, max_cells):
             done_now += 1
             n = con.execute("SELECT COUNT(*) FROM orgs WHERE query=?", (query,)).fetchone()[0]
             print(f"  квадрат {key}: в списке {len(items)}/{total}, новых {new}. Всего собрано: {n}. Осталось квадратов: {len(cells)}")
+            if done_now % 10 == 0:
+                flush()
             if max_cells and done_now >= max_cells:
                 print("Достигнут лимит --max-cells, останавливаюсь.")
                 break
@@ -122,7 +129,10 @@ def collect(con, query, okrugs, names, max_cells):
     except KeyboardInterrupt:
         print("\nОстановлено. Следующий запуск продолжит с этого места.")
     finally:
-        br.close()
+        try:
+            br.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
