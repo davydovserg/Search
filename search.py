@@ -25,7 +25,7 @@ SPLIT_AT = 50
 
 
 def main():
-    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
     ap = argparse.ArgumentParser(description="Сбор организаций с Яндекс Карт")
     ap.add_argument("query", help="что искать, например «салоны красоты»")
     ap.add_argument("--okrug", nargs="*", help="только эти округа: ЦАО САО СВАО СЗАО ВАО ЮВАО ЮАО ЮЗАО ЗАО ЗелАО НАО ТАО")
