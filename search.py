@@ -5,6 +5,7 @@
     python search.py "салоны красоты" --okrug ЦАО
     python search.py "автозапчасти" --segment Север
     python search.py "салоны красоты" --only-send      # только дослать в таблицу
+    python search.py "салоны красоты" --resort         # разложить не-бьюти по листам «Еда» / «Другое»
 """
 import argparse
 import random
@@ -35,6 +36,8 @@ def main():
     ap.add_argument("--only-send", action="store_true", help="не собирать, только отправить несохранённое")
     ap.add_argument("--gid", help="ID вкладки таблицы (число после gid= в ссылке)")
     ap.add_argument("--sheet", help="имя вкладки (создастся, если нет)")
+    ap.add_argument("--resort", action="store_true",
+                    help="разово переложить уже отправленное не-бьюти в листы «Еда» / «Другое»")
     a = ap.parse_args()
 
     query = a.query.strip()
@@ -56,6 +59,16 @@ def main():
     gid = a.gid or (cfg.get("tabs") or {}).get(query.lower())
     sheet_name = a.sheet or (None if gid else query[:1].upper() + query[1:])
 
+    beauty = sheets.is_beauty_query(query)
+
+    if a.resort:
+        # разово: небьюти, уже отправленное в основную вкладку, дослать в «Еда» / «Другое»
+        ids = [r[8] for r in db.all_rows(con, query) if sheets.theme_of(r[7]) != "beauty"]
+        con.executemany("UPDATE orgs SET sent=0 WHERE query=? AND id=?", [(query, i) for i in ids])
+        con.commit()
+        print(f"Не бьюти: {len(ids)} — разложу по листам «Еда» / «Другое»")
+        a.only_send = True
+
     def flush():
         """Досылает в таблицу всё, что ещё не отправлено."""
         if not use_sheet:
@@ -63,11 +76,21 @@ def main():
         todo = db.unsent(con, query)
         if not todo:
             return
-        try:
-            ids = sheets.send(cfg, todo, sheet_name=sheet_name, gid=gid)
-            db.mark_sent(con, query, ids)
-        except Exception as e:  # сеть/Google — не останавливаем сбор, дошлём позже
-            print(f"  не удалось отправить в таблицу ({e}), дошлю позже")
+        # бьюти-запрос: бьюти — в основную вкладку, еда и прочее — в листы «Еда» / «Другое»
+        groups = {}
+        for r in todo:
+            t = sheets.theme_of(r[7]) if beauty else "beauty"
+            groups.setdefault(t, []).append(r)
+        for t, part in groups.items():
+            try:
+                if t == "beauty":
+                    ids = sheets.send(cfg, part, sheet_name=sheet_name, gid=gid)
+                else:
+                    print(f"  в лист «{sheets.OTHER_SHEETS[t]}»: {len(part)}")
+                    ids = sheets.send(cfg, part, sheet_name=sheets.OTHER_SHEETS[t])
+                db.mark_sent(con, query, ids)
+            except Exception as e:  # сеть/Google — не останавливаем сбор, дошлём позже
+                print(f"  не удалось отправить в таблицу ({e}), дошлю позже")
 
     if not a.only_send:
         collect(con, query, okrugs, names, a.max_cells, flush)

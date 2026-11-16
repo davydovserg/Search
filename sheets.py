@@ -48,6 +48,31 @@ def to_contact_row(segment, okrug, title, phones, address, url, site, categories
     ]
 
 
+# ---- тематика: всё бьюти — в основную вкладку, остальное — в свои листы ----
+BEAUTY_RE = re.compile(
+    r"красот|бьюти|beauty|ногт|маникюр|педикюр|nail|космет|эпиляц|депиляц|шугаринг|воск|"
+    r"барбер|парикмах|стрижк|бров|ресниц|визаж|макияж|стилист|солярий|загар|спа|массаж|"
+    r"перманент|татуаж|тату|пирсинг|lash|brow|эстетик", re.I)
+FOOD_RE = re.compile(
+    r"кафе|ресторан|питани|столов|пекарн|кофейн|кофе|бар|паб|пиццер|суши|роллы|шаурм|шаверм|"
+    r"бургер|кондитер|доставка еды|фастфуд|закусочн|блинн|пельмен|хинкал|чайхан|гриль", re.I)
+OTHER_SHEETS = {"food": "Еда", "other": "Другое"}
+
+
+def is_beauty_query(query):
+    return bool(BEAUTY_RE.search(query or "")) or "салон" in (query or "").lower()
+
+
+def theme_of(categories):
+    """beauty | food | other — по всем категориям организации с Яндекса."""
+    c = categories or ""
+    if BEAUTY_RE.search(c):
+        return "beauty"
+    if FOOD_RE.search(c):
+        return "food"
+    return "other"
+
+
 def write_csv(query, rows):
     out = ROOT / "output"
     out.mkdir(exist_ok=True)
