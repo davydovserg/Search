@@ -43,10 +43,17 @@ def _find_search(node):
 class Browser:
     def __init__(self):
         self._pw = sync_playwright().start()
-        self.ctx = self._pw.chromium.launch_persistent_context(
-            str(PROFILE), headless=False, locale="ru-RU",
-            viewport={"width": 1300, "height": 900},
-        )
+        try:
+            self.ctx = self._pw.chromium.launch_persistent_context(
+                str(PROFILE), headless=False, locale="ru-RU",
+                viewport={"width": 1300, "height": 900},
+            )
+        except Exception:
+            self._pw.stop()
+            raise SystemExit(
+                "\nНе удалось открыть браузер: похоже, программа уже запущена в другом окне.\n"
+                "Дождитесь, пока она закончит, или остановите её (Ctrl+C) и запустите заново."
+            )
         self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
         self._batches = []
         self.page.on("response", self._on_response)
