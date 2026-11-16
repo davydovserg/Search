@@ -18,7 +18,16 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     var token = PropertiesService.getScriptProperties().getProperty('TOKEN') || TOKEN_INLINE;
     if (!token || body.token !== token) return json_({ ok: false, error: 'bad token' });
-    return json_(appendRows_(body.spreadsheetId, body.gid, body.sheet, body.rows));
+    // Один писатель за раз: если двое (с разных компьютеров) шлют одновременно,
+    // второй ждёт, а потом видит строки первого и не дублирует их.
+    var lock = LockService.getScriptLock();
+    lock.waitLock(120000);
+    try {
+      return json_(appendRows_(body.spreadsheetId, body.gid, body.sheet, body.rows));
+    } finally {
+      SpreadsheetApp.flush();
+      lock.releaseLock();
+    }
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
