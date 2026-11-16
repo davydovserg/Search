@@ -1,0 +1,8 @@
+{
+  "webapp_url": "https://script.google.com/macros/s/ВАШ_ID/exec",
+  "token": "длинный-пароль-как-в-свойствах-скрипта",
+  "spreadsheet_id": "1coJjl82Cbo9IDjA9SU06AwwNGsGfC7PnQkyPd26mP88",
+  "tabs": {
+    "салоны красоты": "1118221380"
+  }
+}
